@@ -13,25 +13,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const addOTP = `-- name: AddOTP :one
-insert into otps
-(user_id) values ($1)
-returning id, user_id, otp, created_at, expires_at
-`
-
-func (q *Queries) AddOTP(ctx context.Context, userID uuid.UUID) (Otp, error) {
-	row := q.queryRow(ctx, q.addOTPStmt, addOTP, userID)
-	var i Otp
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.Otp,
-		&i.CreatedAt,
-		&i.ExpiresAt,
-	)
-	return i, err
-}
-
 const addSeller = `-- name: AddSeller :one
 INSERT INTO users
 (name, email, phone, password, role, gst_no, about)
@@ -496,26 +477,6 @@ func (q *Queries) GetUsersByRole(ctx context.Context, role string) ([]GetUsersBy
 		return nil, err
 	}
 	return items, nil
-}
-
-const getValidOTPByUserID = `-- name: GetValidOTPByUserID :one
-SELECT id, user_id, otp, created_at, expires_at FROM otps
-WHERE user_id = $1 and expires_at > current_timestamp
-ORDER BY created_at DESC
-LIMIT 1
-`
-
-func (q *Queries) GetValidOTPByUserID(ctx context.Context, userID uuid.UUID) (Otp, error) {
-	row := q.queryRow(ctx, q.getValidOTPByUserIDStmt, getValidOTPByUserID, userID)
-	var i Otp
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.Otp,
-		&i.CreatedAt,
-		&i.ExpiresAt,
-	)
-	return i, err
 }
 
 const unblockUserByID = `-- name: UnblockUserByID :one

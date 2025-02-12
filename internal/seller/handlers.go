@@ -191,3 +191,63 @@ func (s *Seller) DeleteProductHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
+
+func (s *Seller) GetAllCategoriesHandler(w http.ResponseWriter, r *http.Request) {
+	categories, err := s.DB.GetAllCategories(context.TODO())
+	if err != nil {
+		log.Warn("error fetching all categories for seller:", err)
+		http.Error(w, "internal error fetching cateogries", http.StatusInternalServerError)
+		return
+	}
+	var resp struct {
+		Data    []db.Category `json:"data"`
+		Message string        `json:"message"`
+	}
+	resp.Data = categories
+	resp.Message = "successfully fetched all categories"
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Seller) AddProductToCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(utils.UserKey).(db.GetUserBySessionIDRow)
+	if !ok {
+		log.Warn("unable to fetch user from the request context after passing it from Auth Middleware")
+		http.Error(w, "internal error fetching user by sessionID", http.StatusInternalServerError)
+		return
+	}
+	var req struct {
+		ProductID  uuid.UUID `json:"product_id"`
+		CategoryID uuid.UUID `json:"category_id"`
+	}
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "wrong request body format", http.StatusBadRequest)
+		return
+	}
+	seller, err := s.DB.GetSellerByProductID(context.TODO(), req.ProductID)
+	if err == sql.ErrNoRows {
+		log.Warn("error fetching seller from  productID")
+		http.Error(w, "internal error fetching the seller from product_id", http.StatusInternalServerError)
+		return
+	} else if seller.ID != user.ID {
+		http.Error(w, "seller unauthorized to edit the product", http.StatusUnauthorized)
+		return
+	}
+
+	var arg db.AddProductToCategoryByIDParams
+	arg.CategoryID = req.CategoryID
+	arg.ProductID = req.ProductID
+	_, err = s.DB.AddProductToCategoryByID(context.TODO(), arg)
+	if err != nil {
+		log.Warn("error adding product to category items")
+		http.Error(w, "internal error adding product to category items", http.StatusInternalServerError)
+		return
+	}
+	var resp struct {
+		Message string `json:"message"`
+	}
+	resp.Message = "successfully added product to category items"
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}

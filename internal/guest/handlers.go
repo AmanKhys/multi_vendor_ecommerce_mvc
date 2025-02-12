@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/amankhys/multi_vendor_ecommerce_go/pkg/mail"
 	"github.com/amankhys/multi_vendor_ecommerce_go/pkg/sessions"
 	"github.com/amankhys/multi_vendor_ecommerce_go/pkg/utils"
 	"github.com/amankhys/multi_vendor_ecommerce_go/pkg/validators"
@@ -95,7 +96,10 @@ func (g *Guest) UserSignUpHandler(w http.ResponseWriter, r *http.Request) {
 		log.Warn("otp not generated")
 		return
 	}
-	fmt.Println("testing otp: ", signupOTP)
+	err = mail.SendOTPMail(int(signupOTP.Otp), signupOTP.ExpiresAt, respUser.Email)
+	if err != nil {
+		log.Warn("failed to send otp:", err.Error())
+	}
 }
 
 func (g *Guest) SellerSignUpHandler(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +167,7 @@ func (g *Guest) SellerSignUpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var response = resp{
 		Data:    respSeller,
-		Message: "successfully added user. Now you need to verify it",
+		Message: "successfully added user. Now you need to verify it. Check email for otp.",
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
@@ -171,8 +175,26 @@ func (g *Guest) SellerSignUpHandler(w http.ResponseWriter, r *http.Request) {
 	if err == sql.ErrNoRows {
 		log.Warn("otp not generated")
 		return
+	} else if err != nil {
+		log.Warn("error processing AddOTP query")
+		return
 	}
-	fmt.Println("testing otp: ", signupOTP)
+
+	err = mail.SendOTPMail(int(signupOTP.Otp), signupOTP.ExpiresAt, user.Email)
+	if err != nil {
+		log.Warn("failed to send otp", err.Error())
+		result, err := g.DB.DeleteOTPByEmail(context.TODO(), user.Email)
+		if err != nil {
+			log.Warn("error deleting otp by email")
+		}
+		k, err := result.RowsAffected()
+		if err != nil {
+			log.Warn("error fetching the rows affected from DeleteOTPByEmail query resut")
+		}
+		if k == 0 {
+			log.Warn("no rows affected while operating DeleteOTPByEmail query")
+		}
+	}
 }
 
 func (g *Guest) UserSignUpOTPHandler(w http.ResponseWriter, r *http.Request) {
@@ -205,6 +227,12 @@ func (g *Guest) UserSignUpOTPHandler(w http.ResponseWriter, r *http.Request) {
 		otp, err := g.DB.AddOTP(context.TODO(), user.ID)
 		if err == sql.ErrNoRows {
 			log.Warn("no otp generated")
+			return
+		}
+		err = mail.SendOTPMail(int(otp.Otp), otp.ExpiresAt, user.Email)
+		if err != nil {
+			log.Warn("error sending otp:", err.Error())
+			http.Error(w, "error sending otp:", http.StatusInternalServerError)
 			return
 		}
 		log.Info("testing otp generated: ", otp) // for testing
@@ -270,6 +298,22 @@ func (g *Guest) SellerSignUpOTPHandler(w http.ResponseWriter, r *http.Request) {
 		otp, err := g.DB.AddOTP(context.TODO(), user.ID)
 		if err == sql.ErrNoRows {
 			log.Warn("no otp generated")
+			return
+		}
+		err = mail.SendOTPMail(int(otp.Otp), otp.ExpiresAt, user.Email)
+		if err != nil {
+			result, err := g.DB.DeleteOTPByEmail(context.TODO(), user.Email)
+			if err != nil {
+				log.Warn("error deleting otp:", err)
+			}
+			k, err := result.RowsAffected()
+			if err != nil {
+				log.Warn("error fetching rows affected from sql.Result:", err)
+			} else if k == 0 {
+				log.Warn("no otp deleted after successful query execution")
+			}
+			log.Warn("error sending otp email to seller", err.Error())
+			http.Error(w, "error sending otp email", http.StatusInternalServerError)
 			return
 		}
 		log.Info("testing otp generated: ", otp) // for testing
@@ -350,7 +394,7 @@ func (g *Guest) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	sessions.SetSessionCookie(w, session.ID.String())
 	w.Header().Set("Content-Type", "text/plain")
-	message := fmt.Sprintf("%s of id: %s has successfully logged in", user.Role, user.ID.String())
+	message := fmt.Sprintf("%s of id: %s has successfully logged in\n", user.Role, user.ID.String())
 	w.Write([]byte(message))
 }
 

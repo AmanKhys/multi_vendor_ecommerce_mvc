@@ -27,8 +27,8 @@ func SendOTPMail(otp int, expires_at time.Time, recepientMail string) error {
 	if err != nil {
 		return err
 	}
-	smtpServer := envM["smpt_server"]
-	smtpMail := envM["smpt_mail"]
+	smtpServer := envM[envname.SmtpServer]
+	smtpMail := envM[envname.SmtpEmail]
 
 	auth, err := returnAuth()
 	if err != nil {
@@ -54,5 +54,6 @@ func SendOTPMail(otp int, expires_at time.Time, recepientMail string) error {
 
 	recepients = append(recepients, recepientMail)
 	err = smtp.SendMail(smtpServer, auth, smtpMail, recepients, []byte(message))
+	fmt.Println(message)
 	return err
 }
